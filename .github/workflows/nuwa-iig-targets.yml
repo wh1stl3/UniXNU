@@ -1,0 +1,59 @@
+name: nuwa IIG target generation
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+jobs:
+  generate:
+    runs-on: macos-15-intel
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: apple-oss-distributions/xnu
+          ref: 1b191cb58250d0705d8a51287127505aa4bc0789
+          path: xnu
+          persist-credentials: false
+      - name: Generate actual OSObject with each candidate target
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/iig-targets"
+          xcodebuild -version > "$RUNNER_TEMP/iig-targets/xcode.txt"
+          xcrun --sdk iphoneos --find iig > "$RUNNER_TEMP/iig-targets/iig-path.txt"
+          for target in 16.0 19.0 20.0 21.0 22.0; do
+            folder="$RUNNER_TEMP/iig-targets/$target"
+            mkdir -p "$folder"
+            if xcrun --sdk iphoneos iig --def xnu/iokit/DriverKit/OSObject.iig \
+              --header "$folder/OSObject.h" --impl "$folder/OSObject.iig.cpp" \
+              --framework-name DriverKit --deployment-target "$target" -- \
+              -Ixnu/iokit -Ixnu/osfmk -Ixnu/bsd -Ixnu/EXTERNAL_HEADERS \
+              -isysroot "$(xcrun --sdk macosx --show-sdk-path)" -x c++ -std=gnu++1z \
+              -D__IIG=1 -DDRIVERKIT_PRIVATE=1 -DPRIVATE_WIFI_ONLY=1 -DXNU_PLATFORM_MacOSX \
+              > "$folder/generation.log" 2>&1; then
+              echo 0 > "$folder/exit.txt"
+            else
+              echo "$?" > "$folder/exit.txt"
+            fi
+          done
+          python3 - <<'PY'
+          import os, pathlib, json, hashlib
+          root = pathlib.Path(os.environ['RUNNER_TEMP']) / 'iig-targets'
+          records = []
+          for folder in sorted(p for p in root.iterdir() if p.is_dir()):
+              impl = folder / 'OSObject.iig.cpp'
+              text = impl.read_text() if impl.exists() else ''
+              records.append({'target': folder.name, 'exit': int((folder / 'exit.txt').read_text()),
+                              'generated_bytes': len(text.encode()),
+                              'kernel_content_references': text.count('kernelContent'),
+                              'sha256': hashlib.sha256(text.encode()).hexdigest()})
+          (root / 'results.json').write_text(json.dumps(records, indent=2) + '\n')
+          print(json.dumps(records, indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nuwa-iig-targets-${{ github.run_id }}
+          path: ${{ runner.temp }}/iig-targets/**
+          retention-days: 7
