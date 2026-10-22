@@ -84,5 +84,6 @@ jobs:
             ${{ runner.temp }}/nuwa-host/**
             ${{ runner.temp }}/nuwa-8796-source/reports/**
             ${{ runner.temp }}/nuwa-8796-source/build/xnu/ios-obj/**/mach.development.bcm2837*
+            ${{ runner.temp }}/nuwa-8796-source/build/driver-archives/**
           if-no-files-found: error
           retention-days: 7
