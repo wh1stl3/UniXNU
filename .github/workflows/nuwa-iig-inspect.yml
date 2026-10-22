@@ -1,0 +1,38 @@
+name: nuwa IIG compatibility inspection
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+jobs:
+  inspect:
+    runs-on: macos-15-intel
+    timeout-minutes: 10
+    steps:
+      - name: Inspect installed generator options
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/nuwa-iig-inspect"
+          xcodebuild -version > "$RUNNER_TEMP/nuwa-iig-inspect/xcode.txt"
+          xcrun --sdk iphoneos --find iig > "$RUNNER_TEMP/nuwa-iig-inspect/iig-path.txt"
+          if xcrun --sdk iphoneos iig --help > "$RUNNER_TEMP/nuwa-iig-inspect/iig-help.txt" 2>&1; then
+            echo 0 > "$RUNNER_TEMP/nuwa-iig-inspect/help-exit.txt"
+          else
+            echo "$?" > "$RUNNER_TEMP/nuwa-iig-inspect/help-exit.txt"
+          fi
+          python3 - <<'PY'
+          import os, pathlib, re, subprocess
+          tool = pathlib.Path(subprocess.check_output(['xcrun', '--sdk', 'iphoneos', '--find', 'iig'], text=True).strip())
+          strings = re.findall(rb'[ -~]{6,}', tool.read_bytes())
+          selected = sorted(set(s.decode() for s in strings if any(k in s.lower() for k in (b'kernelcontent', b'kernel-content', b'compatib', b'iorpc'))))
+          target = pathlib.Path(os.environ['RUNNER_TEMP']) / 'nuwa-iig-inspect/options-strings.txt'
+          target.write_text('\n'.join(selected) + '\n')
+          PY
+      - name: Upload text evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuwa-iig-options-${{ github.run_id }}
+          path: ${{ runner.temp }}/nuwa-iig-inspect/**
+          retention-days: 7
