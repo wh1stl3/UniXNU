@@ -5,7 +5,7 @@ giulia is the OnePlus Ace 5 (PKG110) with the SM8650 SoC. The port below is an i
 | Repository | Maintainer | State |
 | --- | --- | --- |
 | [UniXNU-giulia](https://github.com/jasper2863/UniXNU-giulia) | [jasper2863](https://github.com/jasper2863) | GUI progress bar reached; installation service blocked |
-| [UniXNU-OnePlus-Ace5](https://github.com/tycykp/UniXNU-OnePlus-Ace5) | [tycykp](https://github.com/tycykp) | Hello and Setup reached; touch in progress |
+| [UniXNU-OnePlus-Ace5](https://github.com/tycykp/UniXNU-OnePlus-Ace5) | [tycykp](https://github.com/tycykp) | Hello and Setup reached with full display and touch; GPU and Wi-Fi pending |
 
 ## State
 
@@ -26,7 +26,7 @@ The repository keeps the full boot logs, host checks and image hashes. The curre
 
 ## tycykp repository
 
-`UniXNU-OnePlus-Ace5` records a separate iOS 16 / Darwin 22 bring-up. Its latest device test reached the Hello and Setup interface. UEFI handoff, XNU startup, native UFS reads, USB CDC serial, HFSX root mount and `launchd` startup are recorded for the tested configuration. Touch identity and reports are observed; the GPIO fallback is unverified. Wi-Fi stays at `Detect.Quiet`, and GPU, audio, cellular and DRM have no complete device validation.
+`UniXNU-OnePlus-Ace5` records a separate iOS 16 / Darwin 22 bring-up. Its 2026-10-23 device test reached Hello and Setup with full 1264x2780 panel coverage and aligned touch. UEFI handoff, XNU startup on one core, native UFS reads, USB CDC serial, HFSX root mount and `launchd` startup are verified. Wi-Fi PCIe, BHI/BHIE, AMSS and QMI resource requests are verified, but the latest run stops at QMP open before firmware-ready. GPU has a preparation service only. Audio has experimental runtime cores with no device playback. Cellular and DRM are unverified.
 
 ## Maintenance
 

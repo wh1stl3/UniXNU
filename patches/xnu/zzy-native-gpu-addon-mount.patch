@@ -177,14 +177,14 @@ index a5ff474..4704203 100644
 +	int close_error = vnode_close(vp, FWRITE, ctx);
 +	return error ? error : close_error;
 +}
-+/* Creates the missing parent directories of an addon path with the mkdir syscall. The scratch is one 4 KiB page; the mount arguments
-+ * end below 0xa00. */
++/* Creates the missing parent directories of an addon path with the mkdir syscall, /private/var/ngpu itself included (a Data seed
++ * that never had add-gpu-plugin-data.py applied has none). The scratch is one 4 KiB page; the mount arguments end below 0xa00. */
 +static int
 +native_gpu_addon_parents(proc_t p, user_addr_t scratch, const char *path)
 +{
 +	char parent[192];
 +	strlcpy(parent, path, sizeof(parent));
-+	for (size_t i = sizeof("/private/var/ngpu/") - 1; parent[i]; ++i) {
++	for (size_t i = sizeof("/private/var/ngpu") - 1; parent[i]; ++i) {
 +		if (parent[i] != '/') {
 +			continue;
 +		}

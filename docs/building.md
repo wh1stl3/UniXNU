@@ -28,31 +28,35 @@ The boot image is `out/<board>/boot/boot.img` with `out/<board>/boot/boot.json` 
 
 ## macOS runner
 
-The kernel, userdata and Data seed steps call Xcode, `hdiutil` and `diskutil`. A fork can run them on a GitHub macOS runner without a local Mac.
+The kernel, userdata and Data seed steps call Xcode, `hdiutil` and `diskutil`. A fork can run them on a GitHub macOS runner without a local Mac. The workflow is a build check: it publishes redacted text logs and no images.
 
 1. Fork the repository and enable Actions.
-2. Add the repository secret `UNIXNU_UNIQUE_CHIP_ID` when the board requires a platform seed.
-3. Run the `macOS build` workflow. Choose the device repository, ref, defconfig and steps.
-4. Download the artifacts from the run.
+2. Add the repository secret `UNIXNU_UNIQUE_CHIP_ID` when the board requires a platform seed for its payload.
+3. Run the `macOS build` workflow. Choose the device repository, ref, defconfig, Xcode version and steps.
+4. Read the step summary or download the log artifact.
+
+The job runs on `macos-26`. `xcode` selects `/Applications/Xcode_<version>.app` and defaults to `26.6`.
 
 | Input | Meaning |
 | --- | --- |
 | `device_repository` | Device repository as `owner/name` |
 | `device_ref` | Ref of the device repository |
-| `defconfig` | Defconfig name |
-| `steps` | `kernel`, `kernel userdata` or `kernel userdata payload`. The default is `kernel userdata` |
+| `defconfig` | Defconfig name from `configs/` |
+| `xcode` | Xcode version on the `macos-26` image |
+| `steps` | `kernel`, `kernel payload`, `kernel userdata` or `kernel userdata payload`. The default is `kernel` |
 | `ipsw_url` | Optional IPSW URL. An empty value uses `board.toml` |
 | `pre_build` | Optional shell commands run in the UniXNU checkout before the kernel build. The device repository is at `DEVICE_DIR` |
-| `trust_cache_url` | Optional trust cache bundle URL |
+| `trust_cache_url` | Optional trust cache bundle URL, masked in the logs |
 | `owner_trust_cache` | Treat the URL as an owner-signed bundle |
-| `data_seed_url` | Optional Data seed URL |
+| `data_seed_url` | Optional Data seed URL, masked in the logs |
 | `grow_gib` | Grow the Data seed to this size |
 | `skip_setup` | Mark Setup as done in the Data seed |
-| `upload_userdata` | Upload the userdata image. The image is large |
 
 Add the repository secret `UNIXNU_DEVICE_TOKEN` when the device repository is private.
 
-A device archive chain that needs a bootstrap candidate, display ABI evidence or a staged kernelcache uses `pre_build`. Its commands run after `unixnu fetch` and before `unixnu build kernel`. The workflow removes the fetched IPSW, the fetched feeds and the staged firmware cache after the artifacts are uploaded.
+The workflow checks the inputs, the defconfig, the Xcode path and the platform seed before installing or building. It publishes only `*.log` files with secrets and signed URLs replaced, and writes a per-step summary. Kernels, payloads, userdata images and IPSW members are not uploaded.
+
+A device archive chain that needs a bootstrap candidate, display ABI evidence or a staged kernelcache uses `pre_build`. Its commands run after checkout and before the kernel build. The workflow removes the fetched IPSW, the fetched feeds and the staged firmware cache at the end.
 
 A bootstrap candidate example:
 

@@ -13,7 +13,7 @@ fajita is the OnePlus 6T with the SDM845 SoC. The port below is an independent c
 | UEFI firmware and UniXNU menu | works on hardware with `fastboot boot` and an empty ramdisk |
 | Payload, ADT and kernel | XNU 23.6.0 from the iPadOS 17.7.11 kernelcache boots to the root mount on hardware; VM, scheduler, IOKit, AMFI, Sandbox and APFS start |
 | Root volume | the verbose console ends on `Waiting on ... IOMedia ... Apple_HFS`; no storage driver yet |
-| Userdata | the 8.74 GiB iPadOS 17.7.11 root image was built and flashed; no kernel has read it yet |
+| Userdata | the 8.74 GiB iPadOS 17.7.11 root image was built and flashed; the Data seed gives Keychains to `_securityd`; no kernel has read it yet |
 
 The payload volume is flashed to `boot_a` because the ABL refuses a large ramdisk. The boot image carries no ramdisk. Run `fastboot set_active b` before each `fastboot boot`; the ABL refuses the boot when the active slot's boot partition holds an image or the retry counter is exhausted.
 

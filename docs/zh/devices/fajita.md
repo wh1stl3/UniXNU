@@ -13,7 +13,7 @@ fajita 是搭载 SDM845 的一加 6T。下面的移植是独立的社区项目�
 | UEFI 固件和 UniXNU 菜单 | 用 `fastboot boot` 和空 ramdisk 在真机工作 |
 | 负载、ADT 和内核 | iPadOS 17.7.11 kernelcache 的 XNU 23.6.0 在真机启动到根挂载，VM、调度器、IOKit、AMFI、Sandbox 和 APFS 启动 |
 | 根卷 | 详细控制台停在 `Waiting on ... IOMedia ... Apple_HFS`，尚未有存储驱动 |
-| userdata | 8.74 GiB iPadOS 17.7.11 根镜像已构建并刷入，尚无内核读取 |
+| userdata | 8.74 GiB iPadOS 17.7.11 根镜像已构建并刷入；Data 种子把 Keychains 交给 `_securityd`；尚无内核读取 |
 
 ABL 拒绝大 ramdisk，因此负载卷刷到 `boot_a`，启动镜像不带 ramdisk。每次 `fastboot boot` 前运行 `fastboot set_active b`；活动槽的 boot 分区有镜像或重试计数耗尽时，ABL 会拒绝启动。
 

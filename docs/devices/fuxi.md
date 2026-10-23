@@ -6,6 +6,7 @@ fuxi is the Xiaomi 13 with the SM8550 SoC. The repositories below are independen
 | --- | --- | --- |
 | [UniXNU-fuxi](https://github.com/matejkoo217/UniXNU-fuxi) | [matejkoo217](https://github.com/matejkoo217) | Device repository, work in progress |
 | [unixnu-fuxi](https://github.com/hanzi123-bilp/unixnu-fuxi), [uefi-fuxi](https://github.com/hanzi123-bilp/uefi-fuxi) | [hanzi123-bilp](https://github.com/hanzi123-bilp) | Stage A and stage B build inputs; no hardware run documented |
+| [unixnu-fuxi](https://github.com/Xyvern08371/unixnu-fuxi) | [Xyvern08371](https://github.com/Xyvern08371) | Alternate fuxi repository; status not documented |
 
 ## UniXNU-fuxi
 
@@ -13,7 +14,7 @@ UniXNU-fuxi is a fork of UniXNU-sheng with fuxi board data. It targets the same 
 
 ## hanzi123-bilp repositories
 
-The `hanzi123-bilp` repositories are a separate device and firmware port. The device repository has a stage A minimal kernel that links before any prelink exists, and a stage B full configuration with 19 archives. The storage audit runs headers-only until live metadata exists. The firmware repository maps the SM8550 register apertures. No hardware run is documented.
+The `hanzi123-bilp` repositories are a separate device and firmware port. The device repository has a stage A minimal kernel that links before any prelink exists, and a stage B full configuration with 19 archives. The storage audit runs headers-only until live metadata exists; stage B moves UFS to the post-prelink build and the graphics audit accepts only its recorded candidate hash. The firmware repository maps the SM8550 register apertures. No hardware run is documented.
 
 ## Maintenance
 

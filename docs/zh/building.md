@@ -28,31 +28,35 @@ git submodule update --init --recursive
 
 ## macOS runner
 
-内核、userdata 和 Data 种子步骤调用 Xcode、`hdiutil` 和 `diskutil`。fork 后可以在 GitHub 的 macOS runner 上运行这些步骤，不需要本地 Mac。
+内核、userdata 和 Data 种子步骤调用 Xcode、`hdiutil` 和 `diskutil`。fork 后可以在 GitHub 的 macOS runner 上运行这些步骤，不需要本地 Mac。workflow 是构建检查：只发布脱敏文本日志，不上传镜像。
 
 1. fork 仓库并启用 Actions。
-2. 板级需要平台种子时，添加仓库 secret `UNIXNU_UNIQUE_CHIP_ID`。
-3. 运行 `macOS build` workflow，选择设备仓库、ref、defconfig 和步骤。
-4. 从运行结果下载 artifact。
+2. 板级需要为负载提供平台种子时，添加仓库 secret `UNIXNU_UNIQUE_CHIP_ID`。
+3. 运行 `macOS build` workflow，选择设备仓库、ref、defconfig、Xcode 版本和步骤。
+4. 查看 step summary，或下载日志 artifact。
+
+job 运行在 `macos-26`。`xcode` 选择 `/Applications/Xcode_<version>.app`，默认 `26.6`。
 
 | 输入 | 含义 |
 | --- | --- |
 | `device_repository` | 设备仓库，格式 `owner/name` |
 | `device_ref` | 设备仓库的 ref |
-| `defconfig` | defconfig 名称 |
-| `steps` | `kernel`、`kernel userdata` 或 `kernel userdata payload`，默认 `kernel userdata` |
+| `defconfig` | `configs/` 中的 defconfig 名称 |
+| `xcode` | `macos-26` 镜像上的 Xcode 版本 |
+| `steps` | `kernel`、`kernel payload`、`kernel userdata` 或 `kernel userdata payload`，默认 `kernel` |
 | `ipsw_url` | 可选 IPSW URL，空值使用 `board.toml` |
 | `pre_build` | 可选 shell 命令，在内核构建前于 UniXNU 检出目录运行。设备仓库位于 `DEVICE_DIR` |
-| `trust_cache_url` | 可选 trust cache 包 URL |
+| `trust_cache_url` | 可选 trust cache 包 URL，日志中会被掩码 |
 | `owner_trust_cache` | 把该 URL 当作 owner 签名的包 |
-| `data_seed_url` | 可选 Data 种子 URL |
+| `data_seed_url` | 可选 Data 种子 URL，日志中会被掩码 |
 | `grow_gib` | 把 Data 种子增长到该大小 |
 | `skip_setup` | 在 Data 种子中标记 Setup 完成 |
-| `upload_userdata` | 上传 userdata 镜像。该镜像很大 |
 
 设备仓库为私有仓库时，添加仓库 secret `UNIXNU_DEVICE_TOKEN`。
 
-需要 bootstrap 候选、显示 ABI 证据或预置 kernelcache 的设备静态库链使用 `pre_build`。命令在 `unixnu fetch` 之后、`unixnu build kernel` 之前运行。workflow 在上传 artifact 后删除抓取的 IPSW、抓取的 feeds 和预置的固件缓存。
+workflow 在安装和构建前检查输入、defconfig、Xcode 路径和平台种子。它只发布 `*.log` 文件，替换其中的密钥和签名 URL，并写入每一步的结果摘要。内核、负载、userdata 镜像和 IPSW 成员不会上传。
+
+需要 bootstrap 候选、显示 ABI 证据或预置 kernelcache 的设备静态库链使用 `pre_build`。命令在检出之后、内核构建之前运行。workflow 在结束时删除抓取的 IPSW、feeds 和固件缓存。
 
 bootstrap 候选示例：
 

@@ -5,7 +5,7 @@ giulia 是搭载 SM8650 的一加 Ace 5（PKG110）。下面的移植是独立�
 | 仓库 | 维护者 | 状态 |
 | --- | --- | --- |
 | [UniXNU-giulia](https://github.com/jasper2863/UniXNU-giulia) | [jasper2863](https://github.com/jasper2863) | 已到 GUI 进度条，安装服务受阻 |
-| [UniXNU-OnePlus-Ace5](https://github.com/tycykp/UniXNU-OnePlus-Ace5) | [tycykp](https://github.com/tycykp) | 已到 Hello 和 Setup，触控进行中 |
+| [UniXNU-OnePlus-Ace5](https://github.com/tycykp/UniXNU-OnePlus-Ace5) | [tycykp](https://github.com/tycykp) | 已到 Hello 和 Setup，显示完整、触控可用；GPU 和 Wi-Fi 待完成 |
 
 ## 状态
 
@@ -26,7 +26,7 @@ giulia 是搭载 SM8650 的一加 Ace 5（PKG110）。下面的移植是独立�
 
 ## tycykp 仓库
 
-`UniXNU-OnePlus-Ace5` 记录了另一条 iOS 16 / Darwin 22 bring-up。最近一次真机测试到达 Hello 和 Setup 界面。已记录测试配置下的 UEFI 交接、XNU 启动、原生 UFS 读取、USB CDC 串口、HFSX 根卷挂载和 `launchd` 启动。触控身份和报文已观察到，GPIO 回退未验证。Wi-Fi 停在 `Detect.Quiet`，GPU、音频、蜂窝和 DRM 没有完整真机验证。
+`UniXNU-OnePlus-Ace5` 记录了另一条 iOS 16 / Darwin 22 bring-up。2026-10-23 的真机测试到达 Hello 和 Setup，1264x2780 面板完整显示，触控对齐可用。已验证 UEFI 交接、单核 XNU 启动、原生 UFS 读取、USB CDC 串口、HFSX 根卷挂载和 `launchd` 启动。Wi-Fi 的 PCIe、BHI/BHIE、AMSS 和 QMI 资源请求已验证，但最新运行停在 QMP open，尚未到 firmware-ready。GPU 只有准备服务。音频有实验性运行时组件，未在真机播放。蜂窝和 DRM 未验证。
 
 ## 维护
 

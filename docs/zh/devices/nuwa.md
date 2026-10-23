@@ -5,6 +5,7 @@ nuwa 是搭载 SM8550、12 GB 内存的小米 13 Pro。下面的移植是独立�
 | 仓库 | 维护者 | 状态 |
 | --- | --- | --- |
 | [UniXNU-nuwa](https://github.com/wh1stl3/UniXNU-nuwa) | [wh1stl3](https://github.com/wh1stl3) | 源内核可编译链接，平台静态库、预链接和真机未完成 |
+| [uefi-nuwa](https://github.com/wh1stl3/uefi-nuwa) | [wh1stl3](https://github.com/wh1stl3) | 固件源码，真机 bring-up 未验证 |
 
 ## 状态
 
@@ -14,8 +15,9 @@ nuwa 是搭载 SM8550、12 GB 内存的小米 13 Pro。下面的移植是独立�
 | 平台静态库 | 未通过；`ArmCpu` 头文件和 Darwin 22 archive 构建仍在进行 |
 | donor 接口 | 已清点 65,348 个指针绑定；源内核缺少 APFS `_vfs_getvfs_with_vfsops` 绑定 |
 | VFS 桥接 | 静态检查通过，实际编译待完成 |
+| 固件 | `uefi-nuwa` 可构建并记录 SEC 边界诊断；真机未验证 |
 | 预链接、QEMU 和真机 | 未运行 |
-| 板级文件 | `example = true`；`uefi-nuwa` 和 nuwa 平台数值尚未建立 |
+| 板级文件 | `example = true`；nuwa 平台数值尚未建立 |
 
 仓库的 `docs/STATUS.md` 是当前状态的唯一来源。
 

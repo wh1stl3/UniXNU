@@ -5,6 +5,7 @@ nuwa is the Xiaomi 13 Pro with the SM8550 SoC and 12 GB of RAM. The port below i
 | Repository | Maintainer | State |
 | --- | --- | --- |
 | [UniXNU-nuwa](https://github.com/wh1stl3/UniXNU-nuwa) | [wh1stl3](https://github.com/wh1stl3) | Source kernel builds and links; platform archives, prelink and hardware not done |
+| [uefi-nuwa](https://github.com/wh1stl3/uefi-nuwa) | [wh1stl3](https://github.com/wh1stl3) | Firmware source; hardware bring-up unverified |
 
 ## State
 
@@ -14,8 +15,9 @@ nuwa is the Xiaomi 13 Pro with the SM8550 SoC and 12 GB of RAM. The port below i
 | Platform archives | not passing; `ArmCpu` includes and the Darwin 22 archive build are still in progress |
 | Donor interface | 65,348 pointer bindings checked; the source kernel misses the APFS `_vfs_getvfs_with_vfsops` binding |
 | VFS bridge | static checks pass; the actual compile is pending |
+| Firmware | `uefi-nuwa` builds and records SEC boundary diagnostics; hardware not verified |
 | Prelink, QEMU and hardware | not run |
-| Board file | `example = true`; firmware `uefi-nuwa` and the nuwa platform values are not established |
+| Board file | `example = true`; the nuwa platform values are not established |
 
 `docs/STATUS.md` in the repository is the current source of truth.
 

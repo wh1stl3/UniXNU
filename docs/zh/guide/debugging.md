@@ -2,6 +2,54 @@
 
 bring-up 需要四类证据：串口输出、屏幕诊断页、panic 屏幕和构建报告。把它们一起收集。
 
+## USB 调试终端
+
+来自 giulia 移植的电脑端工具已整合为 `scripts/debug_terminal.py` 和 Windows CMD 启动器 `scripts/debug-terminal.cmd`，支持 CDC 日志采集、有界诊断命令、按主题导出日志及 GSC1 帧缓冲解码。需要 Python 3.10 或更新版本。交互编辑与 PTY 键盘输入需要 Windows CMD；脚本采集可在 Windows、Linux 和 macOS 上运行。
+
+```sh
+python -m pip install -r scripts/terminal-requirements.txt
+python scripts/debug_terminal.py --list
+python scripts/debug_terminal.py --port COM21 --command collect --seconds 20
+# Linux 示例，请使用实际端口：
+python3 scripts/debug_terminal.py --port /dev/ttyACM0 --command status --seconds 5
+```
+
+Windows 交互模式运行 `scripts\debug-terminal.cmd --port COM21`，输入 `:help` 查看命令。可以显式指定端口，或同时提供完整 USB 身份参数：giulia 开发设备使用 `--vid 0x1209 --pid 0x0001 --usb-serial ACE5DBG001`。未提供完整身份或匹配到多个设备时不会自动连接。工具使用 115200 波特率并置位 DTR；连接前关闭其他占用端口的程序。
+
+| 命令 | 结果 |
+| --- | --- |
+| `all` / `collect` | 排队发送有界查询；`collect` 额外请求 replay/sample，至少 15 秒后保存 |
+| `logs wifi` / `logs gpu` / `logs panic` | 筛选保留的会话日志，不代表新的硬件观测 |
+| `save` | 导出主题文本与会话元数据 |
+| `watch status 2` / `unwatch` | 轮询只读状态查询 / 停止轮询 |
+| `screen.start` / `screen.stop` | 打开本机浏览器投屏 / 停止帧传输 |
+| `screen.snapshot` | 设备提供帧缓冲后保存真实 PNG |
+| `shell` | 进入设备 PTY；Ctrl+] 返回诊断模式 |
+| `reboot.fastboot` | 请求设备同步磁盘后重启 |
+
+会话保存到 `out/terminal/<时间戳>/`，包含轮转的 `device-*.log`、主题文本、`session.json` 和独立屏幕图片。主题导出保留最近 20,000 条完整日志行，屏幕数据包与文本日志分离。浏览器保留最后一张真实画面，启用可选鼠标/键盘控制前检查设备输入能力。
+
+```sh
+python scripts/debug_terminal.py --port COM21 --command screen.start --seconds 60 --max-size 695 --max-fps 1
+python scripts/debug_terminal.py --port COM21 --command reboot.fastboot --fastboot-serial DEVICE_SERIAL --seconds 20
+```
+
+Fastboot 验证需要 PATH 中有 `fastboot`，收到内核重启确认且 CDC 断开后，精确匹配指定的设备序列号。
+
+### 设备兼容性
+
+这些工具运行在电脑端，不会升级设备内核。初始后端实现 giulia 协议 2 命令集、`GIULIA` shell/输入/重启标记和 GSC1 屏幕格式（最多 1264 × 2780 RGB565 像素）。其他板型需要实现兼容协议或增加对应后端，修改 USB ID 本身不提供协议兼容性。板级驱动、地址、启动参数和守护进程安装保留在设备仓库，参见 [giulia 终端实现与配置](https://github.com/tycykp/UniXNU-OnePlus-Ace5/blob/main/docs/USB_TERMINAL.md)。
+
+基础内核可能仅支持 `help`、`ping`、`status`、`replay`；扩展查询需要匹配的终端实现。投屏需要帧缓冲生产者，远程输入需要设备 HID 提供者。PTY shell 需要开发启动参数和已安装的守护进程/shell，尚未实机验证。MMIO 命令保留 giulia 后端的低地址外设窗口及显式开发开关；时钟、映射和支持操作以设备说明为准。GPU/HFI 命令需要对应开发内核。设备会报告不支持的命令，安装电脑工具不会启用这些能力。
+
+导入代码来自 `UniXNU-OnePlus-Ace5` 的 `694b39e`，并包含本地终端/投屏改动。电脑端验证：
+
+```sh
+python -m unittest discover -s tests/terminal -v
+```
+
+可选 C 发送端互操作测试需要设置 `GIULIA_SCREEN_FIXTURE`，指向设备仓库屏幕测试脚本生成的样本。默认测试使用合成数据包和模拟串口，不代表硬件已经可用。
+
 ## 日志来源
 
 | 来源 | 通道 | 用途 |
@@ -151,6 +199,18 @@ python3 scripts/patch-xnu-entry-probe.py <kernel> --panic-screen --no-reset
 ```
 
 panic 屏幕把格式化后的 panic 消息和寄存器写到 framebuffer，并保持显示。`--no-reset` 停止自动复位，屏幕保留到拍照完成。
+
+### 颜色条
+
+早期启动会在 framebuffer 上画三条 1/16 屏幕高度的色条。正常方向下从上到下：
+
+| 色条 | 绘制者 | 含义 |
+| --- | --- | --- |
+| 绿色 | DarwinBoot `DarwinEnter` | 已退出 boot services，控制权到达内核入口 |
+| 蓝色 | 入口探针阶段 1 | 内核入口代码已执行，MMU 仍关闭 |
+| 品红 | 入口探针阶段 2 | 内核到达打开 MMU 之前的位置 |
+
+入口探针把每条画在绿色条下方。阶段 3 没有色条：它在 MMU 打开后等待 `--reset-delay` 秒再复位。过了这段时间设备重启，说明 MMU 已打开。
 
 ### 入口探针复位
 

@@ -5,6 +5,7 @@
 (runtime_examples.ll) and its function-constant fixture are assembled to AIR with llvm-as and embedded for the self-tests. Only generated build files hold local paths; nothing here
 is committed. Output: build/native-metal-bridge/<target>/libnative_metal_bridge.a"""
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -26,7 +27,7 @@ PATCHES = [ROOT / 'drivers/NativeMetal/bridge/patches' / name for name in [
     '0001-optional-constant-output-members.patch', '0002-resource-wait-storage-dependencies.patch',
     '0003-cache-device-entry-point-priming.patch', '0004-fold-constant-global-field-loads.patch',
     '0005-keep-module-decodes-and-profile-fingerprints.patch', '0006-skip-draws-without-a-pipeline.patch',
-    '0007-accept-two-plane-rgb-surfaces.patch']]
+    '0007-accept-two-plane-rgb-surfaces.patch', '0008-alias-padded-rows-of-written-textures.patch']]
 tree_diff = subprocess.check_output(['git', '-C', str(SOURCE), 'diff', 'HEAD', '--'], text=True)
 def canonical_diff(diff):
     # Independent patches touch disjoint files; Git orders the combined diff by
@@ -75,7 +76,10 @@ if args.manifest_only:
     print(manifest)
     raise SystemExit(0)
 triple = 'aarch64-apple-ios' if args.target == 'ios' else 'aarch64-apple-darwin'
-env = dict(os.environ, NMB_FIXTURE_AIR=str(air), NMB_FC_AIR=str(fc_air), IPHONEOS_DEPLOYMENT_TARGET='17.0', MACOSX_DEPLOYMENT_TARGET='14.0')
+# The translator source the runtime is built from (its pin and recorded patches), which keys the shader cache: shader priming keeps what it
+# finished while this stays the same (PrimeShaders.h).
+runtime_id = hashlib.sha256((PIN + '\n' + canonical_diff(expected)).encode()).hexdigest()[:32]
+env = dict(os.environ, NMB_RUNTIME_ID=runtime_id, NMB_FIXTURE_AIR=str(air), NMB_FC_AIR=str(fc_air), IPHONEOS_DEPLOYMENT_TARGET='17.0', MACOSX_DEPLOYMENT_TARGET='14.0')
 target_dir = ROOT / 'build/m2v-target'
 log = out / ('build-%s.log' % args.target)
 with log.open('w') as stream:
