@@ -154,7 +154,7 @@ jobs:
           # cmake and ninja come with the image. Homebrew LLVM is keg-only and stays off PATH: the driver finds it for
           # the archive builders, and everything else uses Xcode's clang. LLD is a separate formula since LLVM 23;
           # the payload step links the panic screen with ld.lld.
-          brew install llvm lld mtools dtc
+          brew install llvm lld mtools dtc openssl@3
           if ! command -v unifdef >/dev/null; then
             brew install unifdef
             echo "$(brew --prefix unifdef)/bin" >> "$GITHUB_PATH"

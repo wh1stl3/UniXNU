@@ -140,6 +140,14 @@ def build_archives(ctx, env):
         log(f'kernel: {label}')
         run(parts, cwd=ctx.tree, env=env, log_file=ctx.logs / f'{label}.log')
         components.sync_outputs(ctx, ctx.modules)
+    bundle = ctx.tree / 'build/virtio-mmio-block-verified-bundle'
+    if (env.get('UNIXNU_STORAGE_STATIC') == '1' and
+            env.get('XNU_NATIVE_VIRTIO_BLOCK_ARCHIVE') == str(bundle / 'libVirtioMmioBlock.a')):
+        for name, args in (
+                ('verified-virtio', ['build-arm-driver.py', 'VirtioMmioBlock', '--verified-root', '--verified-root-bundle']),
+                ('verified-virtio-bindings', ['build-virtio-mmio-bindings.py', '--component', 'VirtioMmioBlock', '--directory', str(bundle)])):
+            run(['python3', ctx.tree / 'scripts' / args[0], *args[1:]], cwd=ctx.tree,
+                env=env, log_file=ctx.logs / (name + '.log'))
     for key, value in sorted(xnu_env(ctx).items()):
         if key.endswith('_ARCHIVE') and value.endswith('.a') and not Path(value).is_file():
             raise Error(f'{key}: {value} not found; supply the archive or its build recipe')
@@ -217,6 +225,14 @@ def build(ctx, modules):
                 cwd=ctx.tree, env=env, log_file=ctx.logs / 'hid-header.log')
             run(['python3', ctx.tree / 'scripts/prepare-ath12k-inputs.py', ctx.tree / 'drivers/Ath12kWifi'],
                 cwd=ctx.tree, env=env, log_file=ctx.logs / 'ath12k-inputs.log')
+
+    if (static_storage and env.get('XNU_VERIFIED_ROOT_ARCHIVE') ==
+            str(ctx.tree / 'build/verified-root-os-xnu-bundle/libVerifiedRootProbe.a')):
+        source = ipsw.Ipsw(ctx)
+        os_image = source.extract('OS')
+        system_image = source.extract('Cryptex1,SystemOS')
+        run(['python3', ctx.tree / 'scripts/prepare-sheng-root-inputs.py', os_image, system_image],
+            cwd=ctx.tree, env=env, log_file=ctx.logs / 'verified-root-inputs.log')
 
     build_archives(ctx, env)
     run(['bash', script], cwd=ctx.tree, env=env, log_file=ctx.logs / 'kernel.log')
