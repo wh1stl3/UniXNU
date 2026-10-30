@@ -46,6 +46,25 @@ def verify(image_path, audit_path):
             checked += 1
     if not checked:
         raise ValueError('No static storage imports verified in final kernel')
+    pmgr_path = ROOT / 'build/sheng-platform-power/build-report.json'
+    if pmgr_path.is_file():
+        pmgr = json.loads(pmgr_path.read_text())
+        entries = pmgr['compiled_entries']
+        if len(entries) != 340 or not pmgr['final_verification_required']:
+            raise ValueError('Incomplete PMGR evidence')
+        base = exports['__ZTV6IOPMGR'] + 16
+        for slot, name in enumerate(entries):
+            if slot in (0, 1, 7) or 168 <= slot < 340:
+                continue
+            off = np.backed_offset(macho['segments'], base + slot * 8, 8, len(image))
+            if exports.get(name) != struct.unpack_from('<Q', image, off)[0]:
+                raise ValueError('Final PMGR native inheritance mismatch: ' + str(slot))
+        for name, target in pmgr['bindings'].items():
+            va = int(target, 16)
+            if exports.get(name) != va or not any(e['module'] == 'com.apple.driver.ApplePMGR' and
+                    e['va'] <= va < e['va'] + e['size'] for e in report['extents']):
+                raise ValueError('Final PMGR absolute import mismatch: ' + name)
+        print('PASS: final PMGR imports and native inheritance; runtime remains unqualified')
     result = dict(candidate_sha256=report['candidate_sha256'], slots_verified=190,
                   imports_verified=checked, runtime_qualified=False)
     (ROOT / 'build/storage-abi/final-prelink.json').write_text(json.dumps(result, indent=2) + '\n')

@@ -3,13 +3,14 @@
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import struct
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'kits/XnuPrelink'))
-from native_prelink import backed_offset, exports, macho
+from native_prelink import backed_offset, exports, macho, unserialize_xml
 
 
 def require(ok, message):
@@ -21,20 +22,45 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--candidate', type=Path, default=ROOT /
                     'build/xnu-prelink/native-owner-ufs-rootauth3-candidate.macho')
 args = parser.parse_args()
-if not args.candidate.exists():
-    # Build products are pruned: a later candidate built from the same original kernelcache carries the same original
-    # AppleMobileFileIntegrity/ApplePMGR instructions; the instruction contracts below are checked against it.
-    later = sorted((ROOT / 'build/xnu-prelink').glob('native-owner-ufs-cpu-desktop-*-candidate.macho'), key=lambda f: f.stat().st_mtime)
-    require(later, 'No reference candidate available')
-    args.candidate = later[-1]
-data = args.candidate.read_bytes()
-plan = json.loads(args.candidate.with_suffix('.json').read_text())
-meta = macho(data)
-symbols = exports(data, meta)
-
+static_donor = os.environ.get('UNIXNU_STATIC_DONOR')
+if static_donor:
+    data = Path(static_donor).read_bytes()
+    require(hashlib.sha256(data).hexdigest() == 'f18b4df865405f2a287b84977d7aca745e056d656d9fc9df1662970ce2969de7', 'Wrong PMGR donor')
+    require(os.environ.get('UNIXNU_STATIC_SLIDE') == '-16777216', 'PMGR contract requires pinned -16MiB slide')
+    meta = macho(data)
+    info = next(s for s in meta['segments'] if s['name'] == '__PRELINK_INFO')
+    at = backed_offset(meta['segments'], info['va'], info['filesize'], len(data))
+    entries = unserialize_xml(data[at:at + info['filesize']])['_PrelinkInfoDictionary']
+    extents, owned, digests = [], [], {}
+    for entry in entries:
+        va = entry.get('_PrelinkExecutableLoadAddr')
+        if not va or entry.get('OSKernelResource'):
+            continue
+        module = macho(data, backed_offset(meta['segments'], va, 32, len(data)))
+        for seg in module['segments']:
+            if seg['name'] == '__LINKEDIT' or not seg['size']:
+                continue
+            owned.append((seg['va'], seg['va'] + seg['size']))
+            extents.append(dict(module=entry['CFBundleIdentifier'], segment=seg['name'], va=seg['va']-0x1000000, size=seg['size']))
+            if seg['name'] == '__TEXT_EXEC':
+                off = backed_offset(meta['segments'], seg['va'], seg['size'], len(data))
+                digests[entry['CFBundleIdentifier']] = hashlib.sha256(data[off:off+seg['size']]).hexdigest()
+    plan = dict(extents=extents, original_executable_sha256=digests, components=[])
+    symbols = exports(data, meta)
+else:
+    if not args.candidate.exists():
+        # Build products are pruned: a later candidate built from the same original kernelcache carries the same original
+        # AppleMobileFileIntegrity/ApplePMGR instructions; the instruction contracts below are checked against it.
+        later = sorted((ROOT / 'build/xnu-prelink').glob('native-owner-ufs-cpu-desktop-*-candidate.macho'), key=lambda f: f.stat().st_mtime)
+        require(later, 'No reference candidate available')
+        args.candidate = later[-1]
+    data = args.candidate.read_bytes()
+    plan = json.loads(args.candidate.with_suffix('.json').read_text())
+    meta = macho(data)
+    symbols = exports(data, meta)
 
 def read(va, size):
-    at = backed_offset(meta['segments'], va, size, len(data))
+    at = backed_offset(meta['segments'], va + (0x1000000 if static_donor else 0), size, len(data))
     return data[at:at + size]
 
 
@@ -44,7 +70,8 @@ def words(va, expected):
 
 
 def pointer(va):
-    return struct.unpack('<Q', read(va, 8))[0]
+    target = struct.unpack('<Q', read(va, 8))[0]
+    return target - 0x1000000 if static_donor and any(lo <= target < hi for lo, hi in owned) else target
 
 
 hashes = {
@@ -94,13 +121,13 @@ def constructor_vptr(reader, pc):
 
 base_vptr = constructor_vptr(read, 0xfffffff0049f0058)
 require(base_vptr == 0xfffffff005ce26d8 and
-        struct.unpack('<2Q', read(base_vptr + 320 * 8, 16)) ==
+        (pointer(base_vptr + 320 * 8), pointer(base_vptr + 321 * 8)) ==
         (0xfffffff004a20fbc, 0xfffffff004a20fc4), 'Base provider slots differ')
 words(0xfffffff004a20fbc, (0x12800000, 0xd65f03c0, 0xd65f03c0))
 
 # The target-specific driver is inspected in the original supplied cache; it
 # is not in this native candidate. Do not infer hardware semantics from its name.
-original = (ROOT / '.cache/firmware/kernelcache.macho/kernelcache.release.ipad7.decompressed').read_bytes()
+original = Path(os.environ.get('UNIXNU_ORIGINAL_DONOR', str(ROOT / '.cache/firmware/kernelcache.macho/kernelcache.release.ipad7.decompressed'))).read_bytes()
 original_meta = macho(original)
 
 
@@ -130,7 +157,7 @@ require(struct.unpack('<2I', original_read(target_slots[0], 8)) == (0x12800000, 
         'Target must return 0xffffffff on read and immediately return on write')
 
 report = {
-    'evidence': 'static analysis of original executable bytes and rebound imports',
+    'evidence': 'static donor analysis; final rebound imports pending' if static_donor else 'static analysis of original executable bytes and rebound imports',
     'original_executable_sha256': hashes,
     'service_class': 'ApplePMGRNub', 'provider_field_offset': '0x88',
     'provider_read_vtable_byte_offset': '0xa00', 'provider_read_slot': 320,

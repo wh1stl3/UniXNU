@@ -194,6 +194,17 @@ def build(ctx, modules):
              '--static-donor', cache, f'--slide={spec["slide"]}'], cwd=ctx.tree, env=env,
             log_file=ctx.logs / 'storage-static.log')
         env['UNIXNU_STORAGE_STATIC'] = '1'
+        pmgr = ctx.tree / 'scripts/build-sheng-platform-power.py'
+        if pmgr.is_file():
+            import hashlib
+            import shutil
+            actual = hashlib.sha256(pmgr.read_text().encode()).hexdigest()
+            if actual != 'c0b0932168ec2b7276bc033a725a5f97448af898efc5f5f2538f72a8324459b1':
+                raise Error('Unrecognized Sheng PMGR builder; refusing offline adaptation')
+            shutil.copyfile(ctx.tree / 'scripts/data/build-sheng-platform-power-static.py', pmgr)
+            env['UNIXNU_STATIC_DONOR'] = str(cache)
+            env['UNIXNU_ORIGINAL_DONOR'] = str(cache)
+            env['UNIXNU_STATIC_SLIDE'] = str(int(str(spec['slide']), 0))
     build_archives(ctx, env)
     run(['bash', script], cwd=ctx.tree, env=env, log_file=ctx.logs / 'kernel.log')
 
@@ -242,5 +253,9 @@ def prelink(ctx):
         spec.get('kernelcache_sha256') == 'f18b4df865405f2a287b84977d7aca745e056d656d9fc9df1662970ce2969de7'):
         run(['python3', ctx.tree / 'scripts/verify-storage-prelink.py', output],
             cwd=ctx.tree, log_file=ctx.logs / 'storage-final.log')
+    if (ctx.tree / 'build/sheng-platform-power/build-report.json').is_file():
+        run(['python3', ctx.tree / 'scripts/audit-amfi-pmgr-contract.py', '--candidate', output],
+            cwd=ctx.tree, env={**os.environ, 'UNIXNU_ORIGINAL_DONOR': str(cache)},
+            log_file=ctx.logs / 'pmgr-final.log')
     log(f'kernel: {output} sha256 {sha256_file(output)}')
     return output
