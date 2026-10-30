@@ -215,6 +215,8 @@ def build(ctx, modules):
             shutil.copyfile(ctx.tree / 'scripts/data/build-gop-legacy-display-static.py', display)
             run(['python3', ctx.tree / 'scripts/build-sheng-hid-input.py', '--prepare-only'],
                 cwd=ctx.tree, env=env, log_file=ctx.logs / 'hid-header.log')
+            run(['python3', ctx.tree / 'scripts/prepare-ath12k-inputs.py', ctx.tree / 'drivers/Ath12kWifi'],
+                cwd=ctx.tree, env=env, log_file=ctx.logs / 'ath12k-inputs.log')
 
     build_archives(ctx, env)
     run(['bash', script], cwd=ctx.tree, env=env, log_file=ctx.logs / 'kernel.log')
