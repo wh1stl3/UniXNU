@@ -4,6 +4,8 @@ import base64
 import concurrent.futures
 import hashlib
 import json
+import os
+from urllib.parse import urlsplit
 from pathlib import Path
 import urllib.request
 
@@ -11,12 +13,21 @@ ROOT = Path(__file__).resolve().parents[1]
 pins = json.loads((ROOT / 'scripts/data/adreno-inputs.json').read_text())
 
 
+def request_headers(url):
+    headers = {'User-Agent': 'sheng-offline-adreno-audit'}
+    target = urlsplit(url)
+    token = os.environ.get('GITHUB_TOKEN')
+    if token and target.scheme == 'https' and target.hostname == 'api.github.com' and target.port in (None, 443):
+        headers['Authorization'] = 'Bearer ' + token
+    return headers
+
+
 def fetch(item):
     path, url, expected, blob, encoding = item
     if path.exists():
         data = path.read_bytes()
     else:
-        request = urllib.request.Request(url, headers={'User-Agent': 'sheng-offline-adreno-audit'})
+        request = urllib.request.Request(url, headers=request_headers(url))
         with urllib.request.urlopen(request, timeout=30) as response:
             data = response.read()
         if blob:
