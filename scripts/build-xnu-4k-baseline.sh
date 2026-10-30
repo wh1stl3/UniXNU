@@ -706,7 +706,9 @@ import hashlib
 records = [json.loads(Path(p).with_name('bindings.json').read_text()) for p in sys.argv[1:]]
 for archive, record in zip(sys.argv[1:], records):
     path = Path(archive)
-    obj = path.with_name(path.stem.removeprefix('lib') + '.o')
+    component = path.stem.removeprefix('lib')
+    runtime = {'VirtioMmioBlock': 'NativeVirtioBlock', 'RamBlock': 'NativeRamBlock'}.get(component, component)
+    obj = path.with_name(runtime + '.o')
     if hashlib.sha256(obj.read_bytes()).hexdigest() != record['compiled_object_sha256']:
         raise SystemExit('Re-audit the actual compiled storage object before linking')
 first, second = [record['bindings'] for record in records]
