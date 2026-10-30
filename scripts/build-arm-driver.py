@@ -2,6 +2,8 @@
 """Compile the generic platform expert against the actual source-kernel ABI."""
 import argparse
 import json
+import os
+import hashlib
 import tomllib
 from pathlib import Path
 import struct
@@ -98,6 +100,19 @@ if component == 'NativeAdreno':
     command += ['-I', str(ROOT / 'kits/ArmSmmu4K'), '-I', str(ROOT / 'kits/AdrenoPM4'),
                 '-I', str(ROOT / 'kits/sheng'), '-I', str(ROOT / 'kits/Sm8550Platform'), '-I', str(ROOT / 'kits/AdrenoFirmware'),
                 '-I', str(ROOT / 'build/sheng-gmu'), '-I', str(ROOT / 'build/adreno740/include')]
+if component == 'NativeAdreno' and os.environ.get('UNIXNU_STORAGE_STATIC') == '1':
+    from adreno_optional_config import guard_optional_declarations
+    original = source.read_text()
+    adapted = guard_optional_declarations(original)
+    staged = out / source.name
+    staged.write_text(adapted)
+    command = [str(staged) if value == str(source) else value for value in command]
+    command += ['-I', str(source.parent)]
+    (out / 'optional-config-source.json').write_text(json.dumps(dict(
+        original_sha256=hashlib.sha256(original.encode()).hexdigest(),
+        adapted_sha256=hashlib.sha256(adapted.encode()).hexdigest(),
+        change='Guard command-db-only declarations with NATIVE_ADRENO_HAVE_COMMAND_DB',
+        warnings_as_errors=True), indent=2) + '\n')
 (out / 'compile-command.json').write_text(json.dumps(command, indent=2) + '\n')
 result = subprocess.run(command, cwd=record['directory'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
 (out / 'compile.log').write_text(result.stdout)
