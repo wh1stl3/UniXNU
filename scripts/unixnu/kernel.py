@@ -198,6 +198,8 @@ def build(ctx, modules):
         if pmgr.is_file():
             run(['python3', ctx.tree / 'scripts/prepare-sheng-font.py'], cwd=ctx.tree,
                 env=env, log_file=ctx.logs / 'sheng-font.log')
+            run(['python3', ctx.tree / 'scripts/prepare-sheng-gpu-inputs.py'], cwd=ctx.tree,
+                env=env, log_file=ctx.logs / 'sheng-gpu-inputs.log')
             import hashlib
             import shutil
             actual = hashlib.sha256(pmgr.read_text().encode()).hexdigest()
@@ -207,6 +209,11 @@ def build(ctx, modules):
             env['UNIXNU_STATIC_DONOR'] = str(cache)
             env['UNIXNU_ORIGINAL_DONOR'] = str(cache)
             env['UNIXNU_STATIC_SLIDE'] = str(int(str(spec['slide']), 0))
+            display = ctx.tree / 'scripts/build-gop-legacy-display.py'
+            if hashlib.sha256(display.read_text().encode()).hexdigest() != '93e4bd23912dcbd26f090f7cf1f5b62fcb92a185c8e35dd5e0968deb31ebe777':
+                raise Error('Unrecognized Sheng display builder')
+            shutil.copyfile(ctx.tree / 'scripts/data/build-gop-legacy-display-static.py', display)
+
     build_archives(ctx, env)
     run(['bash', script], cwd=ctx.tree, env=env, log_file=ctx.logs / 'kernel.log')
 
@@ -259,5 +266,8 @@ def prelink(ctx):
         run(['python3', ctx.tree / 'scripts/audit-amfi-pmgr-contract.py', '--candidate', output],
             cwd=ctx.tree, env={**os.environ, 'UNIXNU_ORIGINAL_DONOR': str(cache)},
             log_file=ctx.logs / 'pmgr-final.log')
+    if (ctx.tree / 'build/native-legacy-display/build-report.json').is_file():
+        run(['python3', ctx.tree / 'scripts/verify-display-prelink.py', output],
+            cwd=ctx.tree, log_file=ctx.logs / 'display-final.log')
     log(f'kernel: {output} sha256 {sha256_file(output)}')
     return output

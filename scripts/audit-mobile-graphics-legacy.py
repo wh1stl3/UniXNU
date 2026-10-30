@@ -2,6 +2,7 @@
 """Identify the original generic framebuffer implementation and its abstract leaves."""
 import hashlib
 import json
+import os
 from pathlib import Path
 import struct
 import sys
@@ -10,22 +11,31 @@ sys.path.insert(0,str(ROOT/'kits/XnuPrelink'))
 from native_prelink import macho,backed_offset,exports
 def require(v,why):
     if not v:raise SystemExit(why)
-path=ROOT/'build/xnu-prelink/native-owner-mobile-graphics-candidate.macho'
-FAMILY_TEXT_SHA='2e044ee68c1650397e1435234ca6459206262e4c7ed709cb7131c6f664f9bd9b'
-if not path.exists():
-    # Build products are pruned: any later candidate built from the same original kernelcache carries the identical original
-    # IOMobileGraphicsFamily executable (checked by hash below), and every layout check in this audit runs against it.
-    later=sorted((ROOT/'build/xnu-prelink').glob('native-owner-ufs-cpu-desktop-*-candidate.macho'),key=lambda f:f.stat().st_mtime)
-    require(later,'No reference candidate available')
-    path=later[-1]
-blob=path.read_bytes();plan=json.loads(path.with_suffix('.json').read_text());image=macho(blob)
-require(hashlib.sha256(blob).hexdigest()==plan['candidate_sha256'] and
-        (plan['candidate_sha256']=='aded28d3c61dafaf7b8a7c96b14427a798e9e95470ae6f287bcd038c07626798' or
-         plan['original_executable_sha256']['com.apple.iokit.IOMobileGraphicsFamily']==FAMILY_TEXT_SHA),
-        'Exact previously qualified original-family candidate')
-def read(va,n):
-    at=backed_offset(image['segments'],va,n,len(blob));return blob[at:at+n]
-names={n:v for v,group in exports(blob,image).items() for n in group}
+static_donor=os.environ.get('UNIXNU_STATIC_DONOR')
+final_path=os.environ.get('UNIXNU_FINAL_DISPLAY')
+offline=bool(static_donor or final_path)
+if static_donor:
+    from static_donor_view import DonorView
+    view=DonorView(static_donor,int(os.environ['UNIXNU_STATIC_SLIDE']))
+    plan=dict(candidate_sha256=None,original_sha256=view.digest,extents=view.extents,original_executable_sha256=view.hashes)
+    read=view.read;names=view.names
+else:
+    path=Path(final_path) if final_path else ROOT/'build/xnu-prelink/native-owner-mobile-graphics-candidate.macho'
+    FAMILY_TEXT_SHA='2e044ee68c1650397e1435234ca6459206262e4c7ed709cb7131c6f664f9bd9b'
+    if not path.exists():
+        # Build products are pruned: any later candidate built from the same original kernelcache carries the identical original
+        # IOMobileGraphicsFamily executable (checked by hash below), and every layout check in this audit runs against it.
+        later=sorted((ROOT/'build/xnu-prelink').glob('native-owner-ufs-cpu-desktop-*-candidate.macho'),key=lambda f:f.stat().st_mtime)
+        require(later,'No reference candidate available')
+        path=later[-1]
+    blob=path.read_bytes();plan=json.loads(path.with_suffix('.json').read_text());image=macho(blob)
+    require(hashlib.sha256(blob).hexdigest()==plan['candidate_sha256'] and
+            (plan['candidate_sha256']=='aded28d3c61dafaf7b8a7c96b14427a798e9e95470ae6f287bcd038c07626798' or
+             plan['original_executable_sha256']['com.apple.iokit.IOMobileGraphicsFamily']==FAMILY_TEXT_SHA),
+            'Exact previously qualified original-family candidate')
+    def read(va,n):
+        at=backed_offset(image['segments'],va,n,len(blob));return blob[at:at+n]
+    names={n:v for v,group in exports(blob,image).items() for n in group}
 family='com.apple.iokit.IOMobileGraphicsFamily'
 text=next(e for e in plan['extents'] if e['module']==family and e['segment']=='__TEXT_EXEC')
 require(hashlib.sha256(read(text['va'],text['size'])).hexdigest()==plan['original_executable_sha256'][family],
@@ -56,9 +66,29 @@ require(names['__ZN9IOService13newUserClientEP4taskPvjPP12IOUserClient']==base[1
 for i,va in enumerate(legacy):
     if i>=168 and i not in pure:require(text['va']<=va<text['va']+text['size'],'Original family owns inherited generic method')
 runtime=ROOT/'build/darwinboot-owner-hvf-mobile-graphics-legacy-class/gdb-stop.json'
-out=ROOT/'build/display-analysis/mobile-graphics-legacy-abi.json'
+out=ROOT/'build/display-analysis'/('mobile-graphics-legacy-final-abi.json' if final_path else 'mobile-graphics-legacy-abi.json')
 RUNTIME_SHA='3044c2beff552911605994c0dc7aa73182066cbb5aed0b396999ceeb5a96da2b'
-if runtime.exists():
+if offline:
+    # Derive class size/parent/name from actual metaclass constructor arguments.
+    pc=0xfffffff0057866a4
+    def formed(at,reg):
+        a,b=struct.unpack('<2I',read(at,8))
+        require(a&0x9f00001f==0x90000000|reg and b&0xffc003ff==0x91000000|(reg<<5)|reg,'Metaclass address operands changed')
+        imm=((a>>5)&0x7ffff)*4+((a>>29)&3)
+        if imm&(1<<20):imm-=1<<21
+        return (at&~4095)+(imm<<12)+((b>>10)&4095)
+    require(read(formed(pc,1),len(b'IOMobileFramebufferLegacy\0'))==b'IOMobileFramebufferLegacy\0' and formed(pc+8,2)==0xfffffff006b31400,
+            'Static class identity/parent differs')
+    require(struct.unpack('<I',read(pc+16,4))[0]==0x52831403,'Static Legacy instance size differs')
+    thunk=branch(pc+20)
+    a,load,br=struct.unpack('<3I',read(thunk,12))
+    require(a&0x9f00001f==0x90000010 and load&0xffc003ff==0xf9400210 and br==0xd61f0200,'Metaclass constructor import thunk changed')
+    imm=((a>>5)&0x7ffff)*4+((a>>29)&3)
+    if imm&(1<<20):imm-=1<<21
+    slot=(thunk&~4095)+(imm<<12)+((load>>10)&4095)*8
+    require(struct.unpack('<Q',read(slot,8))[0]==names['__ZN11OSMetaClassC2EPKcPKS_j'],'Class size must be passed to actual OSMetaClass constructor')
+    runtime_sha=None
+elif runtime.exists():
     d=json.loads(runtime.read_text());args=[int(v,16) for v in d['function_entry_arguments']]
     require(d['kernel_sha256']==plan['candidate_sha256'] and d['function_return_stack_matched']
             and args[0]==0xfffffff006b35940 and args[2:4]==[0xfffffff006b31400,0x18a0]
@@ -71,7 +101,8 @@ else:
     require(out.exists() and json.loads(out.read_text())['runtime_metadata_checkpoint_sha256']==RUNTIME_SHA,
             'Recorded runtime observation hash')
     runtime_sha=RUNTIME_SHA
-out.write_text(json.dumps(dict(candidate_sha256=plan['candidate_sha256'],original_sha256=plan['original_sha256'],
+out.parent.mkdir(parents=True,exist_ok=True)
+out.write_text(json.dumps(dict(runtime_qualified=False,offline_build_audit=offline,candidate_sha256=plan['candidate_sha256'],original_sha256=plan['original_sha256'],
     original_family_text_sha256=plan['original_executable_sha256'][family],
     runtime_metadata_checkpoint_sha256=runtime_sha,
     base_vptr=hex(base_vptr),service_vptr=hex(service_vptr),legacy_vptr=hex(legacy_vptr),
@@ -80,7 +111,7 @@ out.write_text(json.dumps(dict(candidate_sha256=plan['candidate_sha256'],origina
     original_new_user_client=hex(legacy[141]),original_init=hex(legacy[21]),original_start=hex(legacy[86]),
     new_user_client_abi='IOService::newUserClient(task_t,void*,UInt32,IOUserClient**)',
     original_stop=hex(legacy[87]),original_client_initializer=hex(0xfffffff005776810),
-    methods=[dict(slot=i,address=hex(va),abstract=i in pure,prototype_qualified=False) for i,va in enumerate(legacy)],
+    methods=[dict(slot=i,address=hex(va),kernel_names=[n for n,v in names.items() if v==va],abstract=i in pure,prototype_qualified=False) for i,va in enumerate(legacy)],
     static_dispatch_audit=True,legacy_runtime_instance_created=False,backend_contract_complete=False,
     original_instructions_modified=False,desktop=False),indent=2)+'\n')
 print('PASS: original Legacy has 358 slots with nine abstract leaves; original generic client/start/dispatch entries identified')
