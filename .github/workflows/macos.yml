@@ -266,7 +266,8 @@ jobs:
           secrets = [os.environ.get('UNIXNU_UNIQUE_CHIP_ID', ''), inputs.get('trust_cache_url', ''), inputs.get('data_seed_url', '')]
           secrets = [value for value in secrets if value]
           count = 0
-          for path in sorted(source.glob('*.log')) if source.is_dir() else []:
+          paths = list(source.glob('*.log')) + list(source.parent.glob('*/*/logs/*.log'))
+          for path in sorted(set(paths)):
               data = path.read_bytes()
               if b'\0' in data:
                   continue
@@ -274,7 +275,7 @@ jobs:
               for value in secrets:
                   text = text.replace(value, '***')
               text = re.sub(r'https?://[^\s"\']*[?&](?:token|sig|signature|key|X-Amz-Signature)=[^\s"\']*', '***', text, flags=re.I)
-              (target / path.name).write_text(text)
+              (target / ('__'.join(path.relative_to(source.parent).parts))).write_text(text)
               count += 1
           print(f'{count} text logs staged')
           PY
@@ -306,7 +307,7 @@ jobs:
             echo "| payload | ${PAYLOAD:-skipped} |"
             echo
             echo "This workflow only checks that the build works. It publishes text logs (7 days) and no images."
-            xcodebuild -version | head -n 1
+            xcodebuild -version | sed -n '1p'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove proprietary inputs

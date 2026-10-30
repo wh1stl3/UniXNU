@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Qualify original ordinary-ARM64 block-storage ABI using public Darwin 23 source."""
+import argparse
 import hashlib
 import json
 from pathlib import Path
@@ -12,6 +13,12 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'kits/XnuPrelink'))
 import native_prelink as np
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--static-donor', type=Path)
+parser.add_argument('--slide', type=lambda s: int(s, 0), default=0)
+args = parser.parse_args()
+if args.slide % 4096:
+    raise SystemExit('Storage slide must preserve 4K alignment')
 source = ROOT / 'refer/IOStorageFamily'
 revision = subprocess.check_output(['git', '-C', source, 'rev-parse', 'HEAD'], text=True).strip()
 if revision != 'e45fbe30a7879e0b16e26dddb78538f1b00e0bff':
@@ -91,17 +98,30 @@ for at in range(vtable + 16, end, 8):
         break
     methods.append(relocations[at])
 require(len(methods) == 190 and methods.count('___cxa_pure_virtual') == 14, 'Public iOS class dispatch shape changed')
-kernel_path = ROOT / 'build/xnu-prelink/native-apfs-load-positive.macho'
-kernel = kernel_path.read_bytes()
-plan = json.loads(kernel_path.with_suffix('.json').read_text())
-require(hashlib.sha256(kernel).hexdigest() == plan['candidate_sha256'] and
-        plan['original_sha256'] == 'f18b4df865405f2a287b84977d7aca745e056d656d9fc9df1662970ce2969de7', 'Unexpected original candidate provenance')
-native = np.macho(kernel)
+if args.static_donor:
+    kernel = args.static_donor.read_bytes()
+    require(hashlib.sha256(kernel).hexdigest() ==
+            'f18b4df865405f2a287b84977d7aca745e056d656d9fc9df1662970ce2969de7', 'Unexpected donor SHA256')
+    native = np.macho(kernel)
+    info = next(s for s in native['segments'] if s['name'] == '__PRELINK_INFO')
+    off = np.backed_offset(native['segments'], info['va'], info['filesize'], len(kernel))
+    metadata = np.unserialize_xml(kernel[off:off + info['filesize']])
+    entry = next(e for e in metadata['_PrelinkInfoDictionary'] if e['CFBundleIdentifier'] == 'com.apple.iokit.IOStorageFamily')
+    module = np.macho(kernel, np.backed_offset(native['segments'], entry['_PrelinkExecutableLoadAddr'], 32, len(kernel)))
+    const = next(e for e in module['segments'] if e['name'] == '__DATA_CONST')
+    text = next(e for e in module['segments'] if e['name'] == '__TEXT_EXEC')
+else:
+    kernel_path = ROOT / 'build/xnu-prelink/native-apfs-load-positive.macho'
+    kernel = kernel_path.read_bytes()
+    plan = json.loads(kernel_path.with_suffix('.json').read_text())
+    require(hashlib.sha256(kernel).hexdigest() == plan['candidate_sha256'] and
+            plan['original_sha256'] == 'f18b4df865405f2a287b84977d7aca745e056d656d9fc9df1662970ce2969de7', 'Unexpected original candidate provenance')
+    native = np.macho(kernel)
+    extents = [e for e in plan['extents'] if e['module'] == 'com.apple.iokit.IOStorageFamily']
+    const = next(e for e in extents if e['segment'] == '__DATA_CONST')
+    text = next(e for e in extents if e['segment'] == '__TEXT_EXEC')
 exports = np.exports(kernel, native)
 by_name = {name: va for va, names in exports.items() for name in names}
-extents = [e for e in plan['extents'] if e['module'] == 'com.apple.iokit.IOStorageFamily']
-const = next(e for e in extents if e['segment'] == '__DATA_CONST')
-text = next(e for e in extents if e['segment'] == '__TEXT_EXEC')
 
 
 def read(va, length):
@@ -109,8 +129,9 @@ def read(va, length):
     return kernel[at:at + length]
 
 
-require(hashlib.sha256(read(text['va'], text['size'])).hexdigest() ==
-        plan['original_executable_sha256']['com.apple.iokit.IOStorageFamily'], 'Original storage executable code changed')
+if not args.static_donor:
+    require(hashlib.sha256(read(text['va'], text['size'])).hexdigest() ==
+            plan['original_executable_sha256']['com.apple.iokit.IOStorageFamily'], 'Original storage executable code changed')
 blob = read(const['va'], const['size'])
 found = []
 for at in range(0, len(blob) - (len(methods) + 2) * 8 + 1, 8):
@@ -177,6 +198,23 @@ if immediate & 0x100000:
     immediate -= 0x200000
 meta = (function & ~4095) + immediate * 4096 + (add >> 10 & 4095)
 service_meta = by_name['__ZN9IOService10gMetaClassE']
+if args.static_donor:
+    # Only donor-owned imports get absolute addresses. Kernel imports are resolved
+    # by the real final linker; final prelink verifies every slot independently.
+    result = dict(schema='storage-static-v1', donor_sha256=hashlib.sha256(kernel).hexdigest(),
+        slide=args.slide, method_slots=190, abstract_complete_destructors_trap=True,
+        compiled_public_class_size=int(class_size[1], 16), runtime_qualified=False,
+        public_source_revision=revision,
+        vtable=hex(table + args.slide), original_metaclass=hex(meta + args.slide),
+        original_protected_constructor=hex(constructors[0][0] + args.slide),
+        original_base_destructor=hex(destructor + args.slide),
+        methods=[dict(slot=i, reference_name=name,
+                      candidate_target=hex(pointers[i] + (0 if name in by_name else args.slide)),
+                      kernel_names=exports.get(pointers[i], [])) for i, name in enumerate(methods)])
+    (out / 'static-interface.json').write_text(json.dumps(result, indent=2) + '\n')
+    print('PASS: static donor ABI; final prelink and runtime qualification still required')
+    sys.exit(0)
+
 d = json.loads((ROOT / 'build/darwinboot-storage-native-metadata/gdb-stop.json').read_text())
 require(d['kernel_sha256'] == plan['candidate_sha256'] and not d['bounded_timeout_interrupted'], 'Wrong or incomplete live storage metadata observation')
 actual = bytes.fromhex(d['memory'][f'{meta:x}:50'])

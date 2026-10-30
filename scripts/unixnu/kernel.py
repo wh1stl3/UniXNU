@@ -185,8 +185,26 @@ def build(ctx, modules):
         log('kernel: prepare storage headers')
         run(['python3', ctx.tree / 'scripts/prepare-storage-headers.py'], cwd=ctx.tree, env=env,
             log_file=ctx.logs / 'storage-headers.log')
+    spec = ctx.board.get('kernel', {}).get('prelink', {})
+    static_storage = (ctx.schema_version == 2 and
+        spec.get('kernelcache_sha256') == 'f18b4df865405f2a287b84977d7aca745e056d656d9fc9df1662970ce2969de7')
+    if static_storage:
+        cache = storage_donor(ctx, spec)
+        run(['python3', ctx.tree / 'scripts/audit-storage-interface.py',
+             '--static-donor', cache, f'--slide={spec["slide"]}'], cwd=ctx.tree, env=env,
+            log_file=ctx.logs / 'storage-static.log')
+        env['UNIXNU_STORAGE_STATIC'] = '1'
     build_archives(ctx, env)
     run(['bash', script], cwd=ctx.tree, env=env, log_file=ctx.logs / 'kernel.log')
+
+
+def storage_donor(ctx, spec):
+    cache = ctx.option('kernelcache', 'UNIXNU_KERNELCACHE') or (expand(ctx.tree / spec['kernelcache']) if spec.get('kernelcache') else None)
+    if not cache:
+        cache = ipsw.kernelcache(ctx, ipsw.Ipsw(ctx))
+    if not cache.is_file() or sha256_file(cache) != spec['kernelcache_sha256']:
+        raise Error('Storage donor identity mismatch')
+    return cache
 
 
 def prelink(ctx):
@@ -220,5 +238,8 @@ def prelink(ctx):
         command += ['--early-security-init', spec['early_security_init']]
     command += spec.get('extra_args', [])
     run(command, cwd=ctx.tree, log_file=ctx.logs / 'prelink.log')
+    if (ctx.tree / 'build/storage-abi/static-interface.json').is_file():
+        run(['python3', ctx.tree / 'scripts/verify-storage-prelink.py', output],
+            cwd=ctx.tree, log_file=ctx.logs / 'storage-final.log')
     log(f'kernel: {output} sha256 {sha256_file(output)}')
     return output

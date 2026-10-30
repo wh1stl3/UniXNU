@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import struct
@@ -17,14 +18,17 @@ parser.add_argument('--component', choices=['VirtioMmioBlock', 'RamBlock', 'Nati
 parser.add_argument('--directory', type=Path, default=ROOT / 'build/virtio-mmio-block')
 args = parser.parse_args()
 out = args.directory.resolve()
-audit = json.loads((ROOT / 'build/storage-abi/interface-audit.json').read_text())
+static = os.environ.get('UNIXNU_STORAGE_STATIC') == '1'
+audit = json.loads((ROOT / 'build/storage-abi' / ('static-interface.json' if static else 'interface-audit.json')).read_text())
+if static and (audit.get('schema') != 'storage-static-v1' or audit.get('runtime_qualified') is not False):
+    raise SystemExit('Invalid static storage evidence')
 canonical = {'NativeVirtioBlock': 'VirtioMmioBlock', 'NativeRamBlock': 'RamBlock'}.get(args.component, args.component)
 component = {'VirtioMmioBlock': 'NativeVirtioBlock', 'RamBlock': 'NativeRamBlock'}[canonical]
 mangled = str(len(component)) + component
 obj_path = out / (component + '.o')
 obj = obj_path.read_bytes()
 image = np.macho(obj)
-if not audit['live_native_4k'] or audit['method_slots'] != 190 or not audit['abstract_complete_destructors_trap']:
+if (not static and not audit['live_native_4k']) or audit['method_slots'] != 190 or not audit['abstract_complete_destructors_trap']:
     raise SystemExit('First qualify original live storage metadata and its real base functions')
 offset = next(at for cmd, at, size in image['commands'] if cmd == 2)
 sy, count, st, _ = struct.unpack_from('<4I', obj, offset + 8)
@@ -62,7 +66,7 @@ for row, actual in zip(audit['methods'], compiled):
 kernel_path = ROOT / 'build/xnu-prelink/native-apfs-load-positive.macho'
 # The binding values come from the recorded audit; the candidate only proves the audit's identity. Build products are pruned, so a
 # missing candidate is accepted (the audit JSON is the pinned record) while a present one must still match.
-if kernel_path.exists() and hashlib.sha256(kernel_path.read_bytes()).hexdigest() != audit['candidate_sha256']:
+if not static and kernel_path.exists() and hashlib.sha256(kernel_path.read_bytes()).hexdigest() != audit['candidate_sha256']:
     raise SystemExit('Original binding input identity changed')
 possible = {r['reference_name']: int(r['candidate_target'], 16) for r in audit['methods'] if not r['kernel_names']}
 possible.update({'__ZN20IOBlockStorageDeviceC2EPK11OSMetaClass': int(audit['original_protected_constructor'], 16),
@@ -83,7 +87,7 @@ subprocess.run(['xcrun', 'clang', '-target', 'arm64-apple-ios17.0', '-Werror', '
 archive = out / ('lib' + canonical + '.a')
 archive.unlink(missing_ok=True)
 subprocess.run(['xcrun', 'ar', 'rcs', archive, obj_path, out / 'original-bindings.o'], check=True)
-(out / 'bindings.json').write_text(json.dumps(dict(original_candidate_sha256=audit['candidate_sha256'],
+(out / 'bindings.json').write_text(json.dumps(dict(original_candidate_sha256=audit.get('candidate_sha256'), donor_sha256=audit.get('donor_sha256'), runtime_qualified=False,
     compiled_object_sha256=hashlib.sha256(obj).hexdigest(), virtual_methods_checked=190,
     concrete_overrides=overrides, unresolved_original_imports=0,
     bindings={name: hex(value) for name, value in bindings.items()}, original_code_modified=False,
