@@ -15,8 +15,10 @@ def verify(image_path, audit_path):
     report = json.loads(image_path.with_suffix('.json').read_text())
     if (audit['schema'] != 'storage-static-v1' or audit['runtime_qualified'] is not False or
         report['candidate_sha256'] != hashlib.sha256(image).hexdigest() or
-        report['original_sha256'] != audit['donor_sha256']):
+        report['original_sha256'] != audit['donor_sha256'] or report['slide'] != audit['slide']):
         raise ValueError('Storage/prelink provenance mismatch')
+    if [row['slot'] for row in audit['methods']] != list(range(190)):
+        raise ValueError('Incomplete storage method manifest')
     macho = np.macho(image)
     exports = {name: va for va, names in np.exports(image, macho).items() for name in names}
     extents = [e for e in report['extents'] if e['module'] == 'com.apple.iokit.IOStorageFamily']

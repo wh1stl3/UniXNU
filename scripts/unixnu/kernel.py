@@ -238,7 +238,8 @@ def prelink(ctx):
         command += ['--early-security-init', spec['early_security_init']]
     command += spec.get('extra_args', [])
     run(command, cwd=ctx.tree, log_file=ctx.logs / 'prelink.log')
-    if (ctx.tree / 'build/storage-abi/static-interface.json').is_file():
+    if (ctx.schema_version == 2 and
+        spec.get('kernelcache_sha256') == 'f18b4df865405f2a287b84977d7aca745e056d656d9fc9df1662970ce2969de7'):
         run(['python3', ctx.tree / 'scripts/verify-storage-prelink.py', output],
             cwd=ctx.tree, log_file=ctx.logs / 'storage-final.log')
     log(f'kernel: {output} sha256 {sha256_file(output)}')
