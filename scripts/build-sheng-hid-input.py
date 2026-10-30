@@ -82,6 +82,9 @@ for i in range(168,207):
     else:header+=f' virtual __attribute__((deprecated("Unqualified prototype: never call from source"))) void opaque{i}();\n'
 header+='};\nstatic_assert(sizeof(IOHIDDevice)==0xd0,"Original device instance size");\n'
 (OUT/'OriginalHidDeviceABI.h').write_text(header)
+if sys.argv[1:] == ['--prepare-only']:
+    print('PASS: audited original HID header prepared before component compilation')
+    sys.exit(0)
 print(run(['python3',ROOT/'scripts/build-arm-driver.py','NativeHidInput'],text=True),end='')
 obj=OUT/'NativeHidInput.o';raw=obj.read_bytes();om=macho(raw)
 st=next(p for c,p,_ in om['commands'] if c==2);sy,count,strings,_=struct.unpack_from('<4I',raw,st+8);symbols=[]

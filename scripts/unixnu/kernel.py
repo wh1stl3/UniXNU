@@ -213,6 +213,8 @@ def build(ctx, modules):
             if hashlib.sha256(display.read_text().encode()).hexdigest() != '93e4bd23912dcbd26f090f7cf1f5b62fcb92a185c8e35dd5e0968deb31ebe777':
                 raise Error('Unrecognized Sheng display builder')
             shutil.copyfile(ctx.tree / 'scripts/data/build-gop-legacy-display-static.py', display)
+            run(['python3', ctx.tree / 'scripts/build-sheng-hid-input.py', '--prepare-only'],
+                cwd=ctx.tree, env=env, log_file=ctx.logs / 'hid-header.log')
 
     build_archives(ctx, env)
     run(['bash', script], cwd=ctx.tree, env=env, log_file=ctx.logs / 'kernel.log')

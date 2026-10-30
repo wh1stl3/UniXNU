@@ -5,6 +5,8 @@ probe runs it after the original IOGPUFamily kext has loaded. Same binding recip
 original constructor, destructor and metaclass addresses from build/gpu-analysis/ioaccelerator-base-abi.json)."""
 import hashlib
 import json
+import os
+import urllib.request
 from pathlib import Path
 import struct
 import subprocess
@@ -40,6 +42,27 @@ if plan['operational_overrides'] or plan['instance_bytes'] != 136 or plan['virtu
 
 record = json.loads((ROOT / 'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/iokit/DEVELOPMENT/IOPlatformExpert.cpo.json').read_text().strip().rstrip(','))
 source = ROOT / 'drivers/Adreno740/NativeAdrenoAccelerator.cpp'
+if os.environ.get('UNIXNU_STORAGE_STATIC') == '1':
+    # The old relative NativeMetal include does not survive independent feed checkouts.
+    header = OUT / 'OriginalAcceleratorABI.h'
+    url = 'https://raw.githubusercontent.com/UniXNU/AdrenoMetal/454ff2ce83766ce7b3e0f355e83f1d72907708b3/OriginalAcceleratorABI.h'
+    if header.is_file():
+        data = header.read_bytes()
+    else:
+        with urllib.request.urlopen(url, timeout=60) as response:
+            data = response.read()
+    if hashlib.sha256(data).hexdigest() != '211e922f9b760ddec2e3453db6584bac57597b3d39e4bf0d013c1b2debd53365':
+        raise ValueError('Original accelerator ABI header identity mismatch')
+    header.write_bytes(data)
+    text = source.read_text()
+    old = '#include "../NativeMetal/OriginalAcceleratorABI.h"'
+    if text.count(old) != 1:
+        raise ValueError('Accelerator include changed; review adaptation')
+    original_source = source
+    source = OUT / original_source.name
+    source.write_text(text.replace(old, '#include "OriginalAcceleratorABI.h"'))
+    (OUT / 'header-input.json').write_text(json.dumps(dict(url=url, sha256=hashlib.sha256(data).hexdigest(),
+        original_source_sha256=sha(original_source), staged_source_sha256=sha(source)), indent=2) + '\n')
 obj = OUT / 'NativeAdrenoAccelerator.o'
 cmd, i, args = [], 0, record['arguments']
 while i < len(args):
