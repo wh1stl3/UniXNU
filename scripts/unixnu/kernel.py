@@ -196,6 +196,8 @@ def build(ctx, modules):
         env['UNIXNU_STORAGE_STATIC'] = '1'
         pmgr = ctx.tree / 'scripts/build-sheng-platform-power.py'
         if pmgr.is_file():
+            run(['python3', ctx.tree / 'scripts/prepare-sheng-font.py'], cwd=ctx.tree,
+                env=env, log_file=ctx.logs / 'sheng-font.log')
             import hashlib
             import shutil
             actual = hashlib.sha256(pmgr.read_text().encode()).hexdigest()
